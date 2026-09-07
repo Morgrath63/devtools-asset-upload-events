@@ -1,0 +1,8 @@
+{
+  "name": "devtools-asset-upload-events",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node --experimental-strip-types src/asset_upload_service.ts", "test": "node --experimental-strip-types test/asset_upload.test.ts"},
+  "dependencies": {"zod": "^3.23.8"}
+}
