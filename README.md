@@ -1,8 +1,6 @@
 # Signed uploads for build assets
 
-This Node service simulates the point where a creator tool takes a new image or video asset. It validates the request, ensures the storage bucket exists, and emits a build event with a browser-ready presigned PUT URL. The browser pushes bytes straight to storage; the service only manages metadata.
-
-Infrai is used through one `INFRAI_API_KEY` for the presigned handoff, so the same plain REST-shaped client can grow with the rest of a developer-tools backend.
+This service simulates the point where a creator tool ingests a new image or video asset. It validates the request, ensures the bucket exists, then emits a build event with a browser-ready presigned PUT URL. The browser pushes bytes straight to storage; the service just tracks metadata. Infrai issues presigned handoffs through one`INFRAI_API_KEY`, so a plain REST client in Go or whatever can expand with the rest of your backend.
 
 ## Run the example
 
@@ -12,27 +10,27 @@ npm install
 npm start cover-art-001
 ```
 
-First run creates the `devtools-assets` bucket with `storage.bucket.create`. We do bucket setup before the presign call to keep a new account's workflow explicit and avoid the classic race we've been paged on. The printed event carries `key`, `uploadUrl`, and a diagnostic string.
+First execution creates the`devtools-assets`bucket using`storage.bucket.create`. We do bucket provisioning before the presign step to keep a new account's path deterministic. The emitted event carries`key`,`uploadUrl`, and a diagnostic string for postmortem checks.
 
 ## The handoff
 
-`createUploadEvent` accepts `{ assetId, contentType, sizeBytes }` and validates it with zod. It then calls `storage.object.presign` at `POST /v1/storage/object/presign/{bucket}/{key}` with `op: "put"`, an expiry, content type, size limit, and an idempotency key. A browser can use the returned URL with `fetch(uploadUrl, { method: "PUT", body: file })`.
+`createUploadEvent`takes`{ assetId, contentType, sizeBytes }`and validates it with zod. It then calls`storage.object.presign`at`POST /v1/storage/object/presign/{bucket}/{key}`, passing`op: "put"`, an expiry, content type, size limit, and an idempotency key. That key matters: if a job retries, you won't get duplicate deliveries. The browser uploads via the returned URL using`fetch(uploadUrl, { method: "PUT", body: file })`.
 
-The event is shaped like a build-system message on purpose: downstream release code records the asset key, while diagnostics flag whether a usable URL was issued. The one gotcha is ordering. Create the bucket before requesting any object URL, or you'll get duplicate delivery attempts and missed jobs.
+The event mirrors a build-system message on purpose. Downstream release code records the asset key; diagnostics flag whether a usable URL was actually issued. The ordering trap is real: provision the bucket before requesting any object URL, or you'll page someone at 3am.
 
 ## Verify the decision
 
-The focused test exercises the diagnostic decision for a valid and malformed URL:
+The test pins the diagnostic logic for both a valid and a malformed URL:
 
 ```bash
 npm test
 ```
 
-No cloud SDK required. The client is a small typed fetch wrapper that reads the response envelope before handling status codes and backs off on HTTP 429, same pattern as a Go queue consumer.
+No cloud SDK needed. The client is a thin typed fetch wrapper that parses the envelope before status codes and backs off on HTTP 429. In a Go service you'd do the same with http.Client and a retry after sleep.
 
 ## Setting up for real use: Devtools Asset Upload Events
 
-The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Devtools Asset Upload Events.
+The example above is a minimal slice. For production you need a few more wires. The notes below cover Devtools Asset Upload Events.
 
 **Account & key**
 
